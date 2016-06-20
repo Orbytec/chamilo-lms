@@ -1,0 +1,43 @@
+{
+    "name": "lunetics/locale-bundle",
+    "description": "A Bundle for switching Languages",
+    "keywords": ["locale", "bundle", "multilanguage", "router", "browser", "cookie", "language"],
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Lunetics",
+            "homepage": "http://www.lunetics.com"
+        },
+        {
+            "name": "Christophe Willesmen",
+            "homepage": "http://christophewillemsen.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=5.5.9",
+        "symfony/framework-bundle": "^2.8|^3.0",
+        "symfony/yaml": "^2.8|^3.0",
+        "symfony/intl": "^2.8|^3.0",
+        "symfony/validator": "^2.8|^3.0",
+        "psr/log": "~1.0"
+    },
+    "require-dev": {
+        "ext-intl": "*",
+        "twig/twig": "1.*|2.*",
+        "symfony/form": "^2.8|^3.0"
+    },
+    "suggest": {
+        "ext-intl": "Needed for displaying the country name in the locale language"
+    },
+    "autoload": {
+        "psr-0": { "Lunetics\\LocaleBundle": "" }
+    },
+    "target-dir": "Lunetics/LocaleBundle",
+    "extra": {
+        "branch-alias": {
+            "dev-master": "2.5-dev"
+        }
+    }
+}
