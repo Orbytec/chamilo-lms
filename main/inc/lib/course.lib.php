@@ -45,34 +45,16 @@ class CourseManager
             $access_url_id = api_get_current_access_url_id();
         }
 
-        if (isset($_configuration[$access_url_id]) &&
-            is_array($_configuration[$access_url_id])
-        ) {
-            if (isset($_configuration[$access_url_id]['hosting_limit_courses']) &&
-                $_configuration[$access_url_id]['hosting_limit_courses'] > 0
-            ) {
-                $num = self::count_courses($access_url_id);
-                if ($num >= $_configuration[$access_url_id]['hosting_limit_courses']) {
-                    api_warn_hosting_contact('hosting_limit_courses');
-
-                    return api_set_failure(get_lang('PortalCoursesLimitReached'));
-                }
+        if (isset($_configuration[$access_url_id]) && is_array($_configuration[$access_url_id])) {
+            $return = self::checkCreateCourseAccessUrlParam($_configuration, $access_url_id, 'hosting_limit_courses', 'PortalCoursesLimitReached');
+            if ($return != false) {
+                return $return;
             }
-
-            if (isset($_configuration[$access_url_id]['hosting_limit_active_courses']) &&
-                $_configuration[$access_url_id]['hosting_limit_active_courses'] > 0
-            ) {
-                $num = self::countActiveCourses($access_url_id);
-                if ($num >= $_configuration[$access_url_id]['hosting_limit_active_courses']) {
-                    api_warn_hosting_contact('hosting_limit_active_courses');
-
-                    return api_set_failure(
-                        get_lang('PortalActiveCoursesLimitReached')
-                    );
-                }
+            $return = self::checkCreateCourseAccessUrlParam($_configuration, $access_url_id, 'hosting_limit_active_courses', 'PortalActiveCoursesLimitReached');
+            if ($return != false) {
+                return $return;
             }
         }
-
 
         if (empty($params['title'])) {
             return false;
@@ -82,7 +64,7 @@ class CourseManager
             $params['wanted_code'] = $params['title'];
             // Check whether the requested course code has already been occupied.
             $substring = api_substr($params['title'], 0, self::MAX_COURSE_LENGTH_CODE);
-            if ($substring === false or empty($substring)) {
+            if ($substring === false || empty($substring)) {
                 return false;
             } else {
                 $params['wanted_code'] = CourseManager::generate_course_code($substring);
@@ -107,24 +89,7 @@ class CourseManager
                 $course_info = api_get_course_info_by_id($course_id);
 
                 if (!empty($course_info)) {
-                    AddCourse::prepare_course_repository($course_info['directory'], $course_info['code']);
-                    AddCourse::fill_db_course(
-                        $course_id,
-                        $course_info['directory'],
-                        $course_info['course_language'],
-                        $params['exemplary_content']
-                    );
-
-                    CourseManager::createDefaultGradebook($params['gradebook_model_id'], $course_info['code']);
-                    // If parameter defined, copy the contents from a specific
-                    // template course into this new course
-                    CourseManager::useTemplateAsBasisIfRequired($course_info['id'], $params['course_template']);
-
-                    $params['course_code'] = $course_info['code'];
-                    $params['item_id'] = $course_info['real_id'];
-
-                    $courseFieldValue = new ExtraFieldValue('course');
-                    $courseFieldValue->saveFieldValues($params);
+                    self::fillCourse($course_info, $params);
 
                     return $course_info;
                 }
@@ -1652,7 +1617,7 @@ class CourseManager
      */
     public static function get_coach_list_from_course_code($course_code, $session_id)
     {
-        if (empty($course_code) OR empty($session_id)) {
+        if (empty($course_code) || empty($session_id)) {
             return array();
         }
 
@@ -2815,7 +2780,7 @@ class CourseManager
             'variable' => $variable,
             'value' => $value
         ];
-        
+
         return $extraFieldValues->save($params);
     }
 
@@ -3439,8 +3404,11 @@ class CourseManager
                 WHERE user_id = '" . $user_id . "'
                 ORDER BY sort ASC";
         $result = Database::query($sql);
-        $courseCount = 0;
-        $listItems = [];
+        $listItems = [
+            'in_category' => [],
+            'not_category' => []
+        ];
+
         while ($row = Database::fetch_array($result)) {
             // We simply display the title of the category.
             $courseInCategory = self:: returnCoursesCategories(
@@ -3453,8 +3421,7 @@ class CourseManager
                 'title_category' => $row['title'],
                 'courses' => $courseInCategory
             ];
-            $courseCount ++;
-            $listItems['in_category'][$courseCount] = $params;
+            $listItems['in_category'][] = $params;
         }
 
         // Step 2: We display the course without a user category.
@@ -3714,6 +3681,8 @@ class CourseManager
 
             $course_title_url = '';
             $course_title_url = api_get_path(WEB_COURSE_PATH) . $course_info['path'] . '/index.php?id_session=0';
+
+            $teachers = '';
 
             if (api_get_setting('display_teacher_in_courselist') === 'true') {
                 $teachers = CourseManager::getTeachersFromCourseByCode($course['code']);
@@ -4021,7 +3990,7 @@ class CourseManager
         if (1) {
             $session = '';
             $active = false;
-            if (!empty($course_info['session_name'])) {
+            if (!empty($course_info['id_session'])) {
 
                 // Request for the name of the general coach
                 $sql = 'SELECT lastname, firstname,sc.name
@@ -4035,13 +4004,12 @@ class CourseManager
 
                 $rs = Database::query($sql);
                 $sessioncoach = Database::store_result($rs);
-                $sessioncoach = $sessioncoach[0];
+                $sessioncoach = $sessioncoach ? $sessioncoach[0] : null;
 
-                $session = array();
-                $session['title'] = $course_info['session_name'];
+                $session = api_get_session_info($course_info['id_session']);
                 $session_category_id = CourseManager::get_session_category_id_by_session_id($course_info['id_session']);
                 $session['category'] = $sessioncoach['name'];
-                if ($course_info['access_start_date'] == '0000-00-00') {
+                if ($session['access_start_date'] == '0000-00-00') {
                     //$session['dates'] = get_lang('WithoutTimeLimits');
                     $session['dates'] = '';
                     if (api_get_setting('show_session_coach') === 'true') {
@@ -4050,12 +4018,15 @@ class CourseManager
                     }
                     $active = true;
                 } else {
-                    $session ['dates'] = ' - ' . get_lang('From') . ' ' . $course_info['access_start_date'] . ' ' . get_lang('To') . ' ' . $course_info['access_end_date'];
+                    $session ['dates'] = ' - ' . get_lang('From') . ' ' . $session['access_start_date'] . ' ' . get_lang('To') . ' ' . $session['access_end_date'];
                     if (api_get_setting('show_session_coach') === 'true') {
                         $session['coach'] = get_lang('GeneralCoach') . ': ' . api_get_person_name($sessioncoach['firstname'],
                                 $sessioncoach['lastname']);
                     }
-                    $active = ($date_start <= $now && $date_end >= $now);
+                    $date_start = $session['access_start_date'];
+                    $date_end = $session['access_end_date'];
+
+                    $active = !$date_end ? ($date_start <= $now) : ($date_start <= $now && $date_end >= $now);
                 }
             }
             $user_course_category = '';
@@ -5144,6 +5115,7 @@ class CourseManager
         $sql = "SELECT variable FROM $courseSetting
                 WHERE c_id = $courseId AND variable = '$variable'";
         $result = Database::query($sql);
+
         return Database::num_rows($result) > 0;
     }
 
@@ -5725,6 +5697,7 @@ class CourseManager
     {
         $params = self::getCourseParamsForDisplay($courseId, $loadDirs);
         $html = self::course_item_html($params, false);
+
         return $html;
     }
 
@@ -5753,11 +5726,19 @@ class CourseManager
         }
 
         //AND course_rel_user.relation_type<>".COURSE_RELATION_TYPE_RRHH."
-        $sql = "SELECT course.id, course.title, course.code, course.subscribe subscr, course.unsubscribe unsubscr, course_rel_user.status status,
-                course_rel_user.sort sort, course_rel_user.user_course_cat user_course_cat
+        $sql = "SELECT 
+                    course.id, 
+                    course.title, 
+                    course.code, 
+                    course.subscribe subscr, 
+                    course.unsubscribe unsubscr, 
+                    course_rel_user.status status,
+                    course_rel_user.sort sort, 
+                    course_rel_user.user_course_cat user_course_cat
                 FROM
                 $TABLECOURS course,
-                $TABLECOURSUSER  course_rel_user, ".$TABLE_ACCESS_URL_REL_COURSE." url
+                $TABLECOURSUSER course_rel_user, 
+                $TABLE_ACCESS_URL_REL_COURSE url
                 WHERE
                     course.id=".intval($courseId)." AND
                     course.id = course_rel_user.c_id AND
@@ -5833,11 +5814,11 @@ class CourseManager
             $course_title_url = api_get_path(WEB_COURSE_PATH).$course_info['path'].'/?id_session=0';
             $course_title = Display::url($course_info['title'], $course_title_url);
         } else {
-            $course_title = $course_info['title']." ".Display::tag('span',get_lang('CourseClosed'), array('class'=>'item_closed'));
+            $course_title = $course_info['title'].' '.Display::tag('span',get_lang('CourseClosed'), array('class'=>'item_closed'));
         }
 
         // Start displaying the course block itself
-        if (api_get_setting('display_coursecode_in_courselist') == 'true') {
+        if (api_get_setting('display_coursecode_in_courselist') === 'true') {
             $course_title .= ' ('.$course_info['visual_code'].') ';
         }
         $teachers = '';
@@ -5876,14 +5857,16 @@ class CourseManager
         }
         return 0;
     }
+
     /**
      * Helper function to create a default gradebook (if necessary) upon course creation
      * @param   int     $modelId    The gradebook model ID
      * @param   string  $courseCode Course code
      * @return  void
      */
-    public static function createDefaultGradebook($modelId, $courseCode) {
-        if (api_get_setting('gradebook_enable_grade_model') == 'true') {
+    public static function createDefaultGradebook($modelId, $courseCode)
+    {
+        if (api_get_setting('gradebook_enable_grade_model') === 'true') {
             //Create gradebook_category for the new course and add
             // a gradebook model for the course
             if (isset($modelId) &&
@@ -5896,15 +5879,16 @@ class CourseManager
                 );
             }
         }
-        return;
     }
+
     /**
      * Helper function to check if there is a course template and, if so, to
      * copy the template as basis for the new course
      * @param   string  $courseCode   Course code
      * @param   int     $courseTemplate 0 if no course template is defined
      */
-    public static function useTemplateAsBasisIfRequired($courseCode, $courseTemplate) {
+    public static function useTemplateAsBasisIfRequired($courseCode, $courseTemplate)
+    {
         $template = api_get_setting('course_creation_use_template');
         $teacherCanSelectCourseTemplate = api_get_setting('teacher_can_select_course_template') === 'true';
         $courseTemplate = isset($courseTemplate) ? intval($courseTemplate) : 0;
@@ -5930,6 +5914,7 @@ class CourseManager
             $cr->restore($courseCode);
         }
     }
+
     /**
      * Helper method to get the number of users defined with a specific course extra field
      * @param   string  $name   Field title
@@ -5937,29 +5922,83 @@ class CourseManager
      * @param   string  $tableUserFieldValues The user extra field value table name
      * @return  int     The number of users with this extra field with a specific value
      */
-    public static function getCountRegisteredUsersWithCourseExtraField($name, $tableExtraFields = '', $tableUserFieldValues = '') {
+    public static function getCountRegisteredUsersWithCourseExtraField($name, $tableExtraFields = '', $tableUserFieldValues = '')
+    {
         if (empty($tableExtraFields)) {
             $tableExtraFields = Database::get_main_table(TABLE_EXTRA_FIELD);
         }
         if (empty($tableUserFieldValues)) {
             $tableUserFieldValues = Database::get_main_table(TABLE_EXTRA_FIELD_VALUES);
         }
+
         $registered_users_with_extra_field = 0;
 
         if (!empty($name) && $name != '-') {
             $extraFieldType = EntityExtraField::COURSE_FIELD_TYPE;
             $name = Database::escape_string($name);
             $sql = "SELECT count(v.item_id) as count
-                                    FROM $tableUserFieldValues v INNER JOIN
-                                    $tableExtraFields f
-                                    ON (f.id = v.field_id)
-                                    WHERE value = '$name' AND extra_field_type = $extraFieldType";
+                    FROM $tableUserFieldValues v 
+                    INNER JOIN $tableExtraFields f
+                    ON (f.id = v.field_id)
+                    WHERE value = '$name' AND extra_field_type = $extraFieldType";
             $result_count = Database::query($sql);
             if (Database::num_rows($result_count)) {
                 $row_count = Database::fetch_array($result_count);
                 $registered_users_with_extra_field = $row_count['count'];
             }
         }
+
         return $registered_users_with_extra_field;
+    }
+
+    /**
+     * Check if a specific access-url-related setting is a problem or not
+     * @param array $_configuration The $_configuration array
+     * @param int $accessUrlId The access URL ID
+     * @param string $param
+     * @param string $msgLabel
+     * @return bool|string
+     */
+    private static function checkCreateCourseAccessUrlParam($_configuration, $accessUrlId, $param, $msgLabel)
+    {
+        if (isset($_configuration[$accessUrlId][$param]) && $_configuration[$accessUrlId][$param] > 0) {
+            $num = self::count_courses($accessUrlId);
+            if ($num >= $_configuration[$accessUrlId][$param]) {
+                api_warn_hosting_contact($param);
+
+                return api_set_failure(get_lang($msgLabel));
+            }
+        }
+        return false;
+    }
+    /**
+     * Fill course with all necessary items
+     * @param array $courseInfo Course info array
+     * @param array $params Parameters from the course creation form
+     * @return void
+     */
+    private static function fillCourse($courseInfo, $params)
+    {
+        AddCourse::prepare_course_repository($courseInfo['directory'], $courseInfo['code']);
+        AddCourse::fill_db_course(
+            $courseInfo['real_id'],
+            $courseInfo['directory'],
+            $courseInfo['course_language'],
+            $params['exemplary_content']
+        );
+
+        if (isset($params['gradebook_model_id'])) {
+            CourseManager::createDefaultGradebook($params['gradebook_model_id'], $courseInfo['code']);
+        }
+        // If parameter defined, copy the contents from a specific
+        // template course into this new course
+        if (isset($params['course_template'])) {
+            CourseManager::useTemplateAsBasisIfRequired($courseInfo['id'], $params['course_template']);
+        }
+        $params['course_code'] = $courseInfo['code'];
+        $params['item_id'] = $courseInfo['real_id'];
+
+        $courseFieldValue = new ExtraFieldValue('course');
+        $courseFieldValue->saveFieldValues($params);
     }
 }

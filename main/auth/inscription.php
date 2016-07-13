@@ -48,11 +48,12 @@ if (!empty($_SESSION['user_language_choice'])) {
 } else {
     $user_selected_language = api_get_setting('platformLanguage');
 }
+$htmlHeadXtra[] = '<script type="text/javascript" src="//maps.googleapis.com/maps/api/js?sensor=true" ></script>';
 
 if ($userGeolocalization) {
-    $htmlHeadXtra[] = '<script type="text/javascript" src="//maps.googleapis.com/maps/api/js?sensor=true" ></script>';
     $htmlHeadXtra[] = '<script>
     $(document).ready(function() {
+
         initializeGeo(false, false);
 
         $("#geolocalization").on("click", function() {
@@ -64,6 +65,13 @@ if ($userGeolocalization) {
         $("#myLocation").on("click", function() {
             myLocation();
             return false;
+        });
+
+        $("#address").keypress(function (event) {
+            if (event.which == 13) {
+                $("#geolocalization").click();
+                return false;
+            }
         });
     });
 
@@ -423,9 +431,11 @@ if ($user_already_registered_show_terms === false) {
     }
 
     // EXTRA FIELDS
-    if (in_array('extra_fields', $allowedFields)) {
+    if (array_key_exists('extra_fields', $allowedFields) || in_array('extra_fields', $allowedFields)) {
         $extraField = new ExtraField('user');
-        $returnParams = $extraField->addElements($form);
+
+        $extraFieldList = isset($allowedFields['extra_fields']) && is_array($allowedFields['extra_fields']) ? $allowedFields['extra_fields'] : [];
+        $returnParams = $extraField->addElements($form, 0, [], false, false, $extraFieldList);
     }
 }
 if (isset($_SESSION['user_language_choice']) && $_SESSION['user_language_choice'] != '') {
@@ -565,7 +575,7 @@ if (api_get_setting('allow_terms_conditions') == 'true') {
     $form->addElement('hidden', 'legal_accept_type', $term_preview['version'].':'.$term_preview['language_id']);
     $form->addElement('hidden', 'legal_info', $term_preview['id'].':'.$term_preview['language_id']);
 
-    if ($term_preview['type'] === 1) {
+    if ($term_preview['type'] == 1) {
         $form->addElement(
             'checkbox',
             'legal_accept',
@@ -630,6 +640,8 @@ if ($form->validate()) {
         $status = isset($values['status']) ? $values['status'] : STUDENT;
         $phone = isset($values['phone']) ? $values['phone'] : null;
         $values['language'] = isset($values['language']) ? $values['language'] : api_get_interface_language();
+        $values['address'] = isset($values['address']) ? $values['address'] : '';
+
         // Creates a new user
         $user_id = UserManager::create_user(
             $values['firstname'],
@@ -650,12 +662,14 @@ if ($form->validate()) {
             null,
             true,
             false,
-            $values['address']
+            $values['address'],
+            false,
+            $form
         );
 
         //update the extra fields
         $count_extra_field = count($extras);
-        if ($count_extra_field > 0) {
+        if ($count_extra_field > 0 && is_integer($user_id)) {
             foreach ($extras as $key => $value) {
                 // For array $value -> if exists key 'tmp_name' then must not be empty
                 // This avoid delete from user field value table when doesn't upload a file

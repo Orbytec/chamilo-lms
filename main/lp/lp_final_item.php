@@ -36,7 +36,7 @@ $finalItemTemplate = '';
 
 // Check prerequisites and total completion of the learning path
 $lp = new Learnpath($courseCode, $lpId, $userId);
-$count = $lp->get_total_items_count_without_chapters();
+$count = $lp->getTotalItemsCountWithoutDirs();
 $completed = $lp->get_complete_items_count(true);
 $currentItemId = $lp->get_current_item_id();
 $currentItem = $lp->items[$currentItemId];
@@ -107,7 +107,7 @@ if ($accessGranted == false) {
             }
         }
 
-        $finalItemTemplate = generateLPFinalItemTemplate($id, $courseCode, $downloadCertificateLink, $badgeLink);
+        $finalItemTemplate = generateLPFinalItemTemplate($id, $courseCode, $sessionId, $downloadCertificateLink, $badgeLink);
 
         if (!$finalItemTemplate) {
             Display::display_warning_message(get_lang('FileNotFound'));

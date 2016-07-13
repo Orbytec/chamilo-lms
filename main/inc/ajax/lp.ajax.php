@@ -1,6 +1,8 @@
 <?php
 /* For licensing terms, see /license.txt */
 
+use ChamiloSession as Session;
+
 /**
  * Responses to AJAX calls
  */
@@ -64,9 +66,8 @@ switch ($action) {
     case 'update_lp_item_order':
         if (api_is_allowed_to_edit(null, true)) {
 
-            $new_order   = $_POST['new_order'];
-
-            $sections	= explode('^', $new_order);
+            $new_order = $_POST['new_order'];
+            $sections = explode('^', $new_order);
             $new_array = array();
 
             // We have to update parent_item_id, previous_item_id, next_item_id, display_order in the database
@@ -127,7 +128,7 @@ switch ($action) {
             exit;
         }
         /** @var Learnpath $lp */
-        $lp = isset($_SESSION['oLP']) ? $_SESSION['oLP'] : null;
+        $lp = Session::read('oLP');
         $course_info = api_get_course_info();
 
         $lpPathInfo = $lp->generate_lp_folder($course_info);
@@ -187,12 +188,7 @@ switch ($action) {
             break;
         }
 
-        $learningPath = new learnpath(
-            api_get_course_id(),
-            $lpId,
-            api_get_user_id()
-        );
-
+        $learningPath = learnpath::getLpFromSession(api_get_course_id(), $lpId, api_get_user_id());
         $lpItem = $learningPath->getItem($lpItemId);
 
         if (empty($lpItem)) {
@@ -265,7 +261,7 @@ switch ($action) {
         ]);
         break;
     case 'update_gamification':
-        $lp = isset($_SESSION['oLP']) ? $_SESSION['oLP'] : null;
+        $lp = Session::read('oLP');
 
         $jsonGamification = [
             'stars' => 0,
@@ -282,10 +278,10 @@ switch ($action) {
         echo json_encode($jsonGamification);
         break;
     case 'check_item_position':
-        $lp = isset($_SESSION['oLP']) ? $_SESSION['oLP'] : null;
+        $lp = Session::read('oLP');
         $lpItemId = isset($_GET['lp_item']) ? intval($_GET['lp_item']) : 0;
         if ($lp) {
-            $position = $_SESSION['oLP']->isFirstOrLastItem($lpItemId);
+            $position = $lp->isFirstOrLastItem($lpItemId);
         }
 
         echo json_encode($position);

@@ -67,7 +67,7 @@ $_configuration['url_append'] = '{URL_APPEND_PATH}';
 // $extAuthSource["extldap"]["newUser"] = $_configuration['root_sys']."main/auth/external_login/newUser.ldap.php";
 //
 // FACEBOOK IMPLEMENTATION BASED ON external_login info
-// -> Uncomment the line bellow to activate Facebook Auth AND edit main/auth/external_login/ldap.conf.php for configuration
+// -> Uncomment the line bellow to activate Facebook Auth AND edit app/config/auth.conf.php for configuration
 // $_configuration['facebook_auth'] = 1;
 //
 // OTHER EXTERNAL LOGIN INFORMATION
@@ -246,3 +246,6 @@ $_configuration['system_stable'] = NEW_VERSION_STABLE;
 // to reflect their packaging method. The default value is 'chamilo'. This will
 // be reflected on the https://version.chamilo.org/stats page in the future.
 //$_configuration['packager'] = 'chamilo';
+// If true exercises added in LP can be modified.
+//$_configuration['force_edit_exercise_in_lp'] = false;
+

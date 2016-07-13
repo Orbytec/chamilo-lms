@@ -654,7 +654,7 @@ class CourseHome
      * @param array $all_tools_list List of tools as returned by get_tools_category()
      * @param bool  $rows
      *
-     * @return void
+     * @return string
      */
     public static function show_tools_category($all_tools_list, $rows = false)
     {
@@ -1093,6 +1093,8 @@ class CourseHome
     {
         $navigation_items = array();
         $course_id = api_get_course_int_id();
+        $courseInfo = api_get_course_info();
+        $sessionId = api_get_session_id();
 
         if (!empty($course_id)) {
 
@@ -1100,7 +1102,7 @@ class CourseHome
 
             /* 	Link to the Course homepage */
             $navigation_items['home']['image'] = 'home.gif';
-            $navigation_items['home']['link'] = api_get_path(WEB_CODE_PATH).Security::remove_XSS($_SESSION['_course']['path']).'/index.php';
+            $navigation_items['home']['link'] = $courseInfo['course_public_url'];
             $navigation_items['home']['name'] = get_lang('CourseHomepageLink');
 
             $sql = "SELECT * FROM $course_tools_table
@@ -1125,7 +1127,7 @@ class CourseHome
                 $sql_result = Database::query($sql);
                 $course_setting_info = Database::fetch_array($sql_result);
                 $course_setting_visual_name = CourseHome::translate_tool_name($course_setting_info);
-                if (api_get_session_id() == 0) {
+                if ($sessionId == 0) {
                     // course settings item
                     $navigation_items['course_settings']['image'] = $course_setting_info['image'];
                     $navigation_items['course_settings']['link'] = api_get_path(WEB_CODE_PATH).'course_info/infocours.php';
@@ -1143,7 +1145,7 @@ class CourseHome
                 $parameter_separator = '?';
             }
             //$navigation_items[$key]['link'] .= $parameter_separator.api_get_cidreq();
-            $navigation_items[$key]['link'] .= $parameter_separator.'cidReq='.api_get_course_id().'&gidReq=0&id_session='.api_get_session_id();
+            $navigation_items[$key]['link'] .= $parameter_separator.'cidReq='.api_get_course_id().'&gidReq=0&id_session='.$sessionId;
         }
 
         return $navigation_items;
@@ -1157,27 +1159,31 @@ class CourseHome
         $navigation_items = self::get_navigation_items(true);
         $course_id = api_get_course_id();
 
-        $html = '<div id="toolnav"> <!-- start of #toolnav -->';
+        $html = '<div id="toolnav">'
+                . '<div class="btn-tool">'
+                . '<a class="btn btn-default" href="javascript: void(0);" id="swap_menu_link" onclick="javascript: swap_menu();">'.Display::returnFontAwesomeIcon('bars').'</a></div>';
         if (api_get_setting('show_navigation_menu') == 'icons') {
             $html .= self::show_navigation_tool_shortcuts($orientation = SHORTCUTS_VERTICAL);
         } else {
             $html .= '<div id="toolnavbox">';
-            $html .= '<div id="toolnavlist"><dl>';
+            $html .= '<ul>';
+            $count = 0;
             foreach ($navigation_items as $key => $navigation_item) {
                 //students can't see the course settings option
+                $count++;
                 if (!api_is_allowed_to_edit() && $key == 'course_settings') {
                     continue;
                 }
-                $html .= '<dd>';
+                $html .= '<li>';
                 $url_item = parse_url($navigation_item['link']);
                 $url_current = parse_url($_SERVER['REQUEST_URI']);
 
                 if (strpos($navigation_item['link'], 'chat') !== false &&
                     api_get_course_setting('allow_open_chat_window', $course_id)
                 ) {
-                    $html .= '<a href="javascript: void(0);" onclick="javascript: window.open(\''.$navigation_item['link'].'\',\'window_chat'.$_SESSION['_cid'].'\',config=\'height=\'+600+\', width=\'+825+\', left=2, top=2, toolbar=no, menubar=no, scrollbars=yes, resizable=yes, location=no, directories=no, status=no\')" target="'.$navigation_item['target'].'"';
+                    $html .= '<a class="btn btn-default" href="javascript: void(0);" onclick="javascript: window.open(\''.$navigation_item['link'].'\',\'window_chat'.$_SESSION['_cid'].'\',config=\'height=\'+600+\', width=\'+825+\', left=2, top=2, toolbar=no, menubar=no, scrollbars=yes, resizable=yes, location=no, directories=no, status=no\')" target="'.$navigation_item['target'].'"';
                 } else {
-                    $html .= '<a href="'.$navigation_item['link'].'" target="_top" ';
+                    $html .= '<a class="btn btn-default" href="'.$navigation_item['link'].'" target="_top" ';
                 }
 
                 if (stristr($url_item['path'], $url_current['path'])) {
@@ -1187,17 +1193,18 @@ class CourseHome
                 }
                 $html .= ' title="'.$navigation_item['name'].'">';
                 if (api_get_setting('show_navigation_menu') != 'text') {
-                    $html .= '<div align="left"><img src="'.api_get_path(WEB_IMG_PATH).$navigation_item['image'].'" alt="'.$navigation_item['name'].'"/></div>';
+                    $html .= '<div class="pull-left">'.Display::return_icon(substr($navigation_item['image'],0,-3)."png", $navigation_item['name'], array('class'=>'tool-img'), ICON_SIZE_SMALL).'</div>';
                 }
                 if (api_get_setting('show_navigation_menu') != 'icons') {
-                    $html .= $navigation_item['name'];
+                    $html .= '<span class="tool-text-'.$count.'">'.$navigation_item['name'].'</span>';
                 }
                 $html .= '</a>';
-                $html .= '</dd>';
+                $html .= '</li>';
             }
-            $html .= '</dl></div></div>';
+            $html .= '</ul></div>';
         }
         $html .= '</div><!-- end "#toolnav" -->';
+
         return $html;
     }
 
@@ -1209,32 +1216,33 @@ class CourseHome
         $navigation_items = self::get_navigation_items(false);
         $html = '';
         if (!empty($navigation_items)) {
-            if ($orientation == SHORTCUTS_HORIZONTAL)
+            if ($orientation == SHORTCUTS_HORIZONTAL) {
                 $style_id = "toolshortcuts_horizontal";
-            else {
+            } else {
                 $style_id = "toolshortcuts_vertical";
             }
             $html .= '<div id="'.$style_id.'">';
-
             foreach ($navigation_items as $key => $navigation_item) {
                 if (strpos($navigation_item['link'], 'chat') !== false &&
                     api_get_course_setting('allow_open_chat_window')
                 ) {
-                    $html .= '<a href="javascript: void(0);" onclick="javascript: window.open(\''.$navigation_item['link'].'\',\'window_chat'.$_SESSION['_cid'].'\',config=\'height=\'+600+\', width=\'+825+\', left=2, top=2, toolbar=no, menubar=no, scrollbars=yes, resizable=yes, location=no, directories=no, status=no\')" target="'.$navigation_item['target'].'"';
+                    $html .= '<a class="items-icon" href="javascript: void(0);" onclick="javascript: window.open(\''.$navigation_item['link'].'\',\'window_chat'.$_SESSION['_cid'].'\',config=\'height=\'+600+\', width=\'+825+\', left=2, top=2, toolbar=no, menubar=no, scrollbars=yes, resizable=yes, location=no, directories=no, status=no\')" target="'.$navigation_item['target'].'"';
                 } else {
-                    $html .= '<a href="'.$navigation_item['link'].'"';
+                    $html .= '<a class="items-icon" href="'.$navigation_item['link'].'"';
                 }
                 if (strpos(api_get_self(), $navigation_item['link']) !== false) {
                     $html .= ' id="here"';
                 }
                 $html .= ' target="_top" title="'.$navigation_item['name'].'">';
-                $html .= '<img src="'.api_get_path(WEB_IMG_PATH).$navigation_item['image'].'" alt="'.$navigation_item['name'].'"/>';
+                $html .= Display::return_icon(substr($navigation_item['image'],0,-3)."png", $navigation_item['name'], null, ICON_SIZE_MEDIUM);
+                //$html .= '<img src="'.api_get_path(WEB_IMG_PATH).$navigation_item['image'].'" alt="'.$navigation_item['name'].'"/>';
                 $html .= '</a> ';
                 if ($orientation == SHORTCUTS_VERTICAL) {
                     $html .= '<br />';
                 }
             }
             $html .= '</div>';
+
         }
 
         return $html;

@@ -24,6 +24,7 @@ class ExtraField extends BaseAttribute
     const CALENDAR_FIELD_TYPE = 5;
     const LP_FIELD_TYPE = 6;
     const LP_ITEM_FIELD_TYPE = 7;
+    const SKILL_FIELD_TYPE = 8;
 
     /**
      * @var integer
@@ -181,11 +182,16 @@ class ExtraField extends BaseAttribute
     }
 
     /**
+     * @param bool $translated Optional. Whether translate the display text
      * @return string
      */
-    public function getDisplayText()
+    public function getDisplayText($translated = true)
     {
-        return \ExtraField::translateDisplayName($this->variable, $this->displayText);
+        if ($translated) {
+            return \ExtraField::translateDisplayName($this->variable, $this->displayText);
+        }
+
+        return $this->displayText;
     }
 
     /**
@@ -316,5 +322,4 @@ class ExtraField extends BaseAttribute
                 return 'text';
         }
     }
-
 }

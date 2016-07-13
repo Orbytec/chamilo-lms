@@ -182,6 +182,7 @@ VALUES
 ('timezone_value', 'timezones', 'select', 'Timezones', '', 'TimezoneValueTitle','TimezoneValueComment',NULL,'Timezones', 1),
 ('allow_user_course_subscription_by_course_admin', NULL, 'radio', 'Security', 'true', 'AllowUserCourseSubscriptionByCourseAdminTitle', 'AllowUserCourseSubscriptionByCourseAdminComment', NULL, NULL, 1),
 ('show_link_bug_notification', NULL, 'radio', 'Platform', 'false', 'ShowLinkBugNotificationTitle', 'ShowLinkBugNotificationComment', NULL, NULL, 0),
+('show_link_ticket_notification', NULL, 'radio', 'Platform', 'false', 'ShowLinkTicketNotificationTitle', 'ShowLinkTicketNotificationComment', NULL, NULL, 0),
 ('course_validation', NULL, 'radio', 'Platform', 'false', 'EnableCourseValidation', 'EnableCourseValidationComment', NULL, NULL, 1),
 ('course_validation_terms_and_conditions_url', NULL, 'textfield', 'Platform', '', 'CourseValidationTermsAndConditionsLink', 'CourseValidationTermsAndConditionsLinkComment', NULL, NULL, 1),
 ('sso_authentication',NULL,'radio','Security','false','EnableSSOTitle','EnableSSOComment',NULL,NULL,1),
@@ -497,6 +498,8 @@ VALUES
 ('allow_user_course_subscription_by_course_admin', 'false', 'No'),
 ('show_link_bug_notification', 'true', 'Yes'),
 ('show_link_bug_notification', 'false', 'No'),
+('show_link_ticket_notification', 'true', 'Yes'),
+('show_link_ticket_notification', 'false', 'No'),
 ('course_validation', 'true', 'Yes'),
 ('course_validation', 'false', 'No'),
 ('sso_authentication', 'true', 'Yes'),
@@ -1649,7 +1652,7 @@ VALUES
 ('allow_captcha','','radio','Security','false','EnableCaptchaText','EnableCaptchaComment',NULL,'',true),
 ('captcha_number_mistakes_to_block_account','','textfield','Security',5,'CaptchaNumberOfMistakesBeforeBlockingAccountText','CaptchaNumberOfMistakesBeforeBlockingAccountComment',NULL,'',true),
 ('captcha_time_to_block','','textfield','Security',5,'CaptchaTimeAccountIsLockedText','CaptchaTimeAccountIsLockedComment',NULL,'',true),
-('drh_can_access_all_session_content','','radio','Session','true','DRHAccessToAllSessionContentText','DRHAccessToAllSessionContentComment',NULL,'',true),
+('drh_can_access_all_session_content','','radio','Session','false','DRHAccessToAllSessionContentText','DRHAccessToAllSessionContentComment',NULL,'',true),
 ('display_groups_forum_in_general_tool','','radio','Tools','true','ShowGroupForaInGeneralToolText','ShowGroupForaInGeneralToolComment',NULL,'',true),
 ('allow_tutors_to_assign_students_to_session','','radio','Session','false','TutorsCanAssignStudentsToSessionsText','TutorsCanAssignStudentsToSessionsComment',NULL,'',true);
 
@@ -1875,6 +1878,20 @@ INSERT INTO settings_current (variable, type, category, selected_value, title, c
 INSERT INTO settings_options (variable, value, display_text) VALUES ('enable_profile_user_address_geolocalization', 'true', 'Yes');
 INSERT INTO settings_options (variable, value, display_text) VALUES ('enable_profile_user_address_geolocalization', 'false', 'No');
 
+INSERT INTO settings_current (variable, type, category, selected_value, title, comment) VALUES ('show_official_code_whoisonline', 'radio', 'User', 'false', 'ShowOfficialCodeInWhoIsOnlinePage', 'ShowOfficialCodeInWhoIsOnlinePageComment');
+INSERT INTO settings_options (variable, value, display_text) VALUES ('show_official_code_whoisonline', 'true', 'Yes');
+INSERT INTO settings_options (variable, value, display_text) VALUES ('show_official_code_whoisonline', 'false', 'No');
+
 INSERT INTO access_url_rel_course_category (access_url_id, course_category_id) VALUES (1, 1);
 INSERT INTO access_url_rel_course_category (access_url_id, course_category_id) VALUES (1, 2);
 INSERT INTO access_url_rel_course_category (access_url_id, course_category_id) VALUES (1, 3);
+
+UPDATE settings_current SET selected_value = '1.11.0.5' WHERE variable = 'chamilo_database_version';
+
+INSERT INTO extra_field (extra_field_type, field_type, variable, display_text, visible, changeable, created_at) VALUES (8, 10, 'tags', 'Tags', 1, 1, NOW());
+
+UPDATE settings_current SET selected_value = '1.11.0.6' WHERE variable = 'chamilo_database_version';
+
+INSERT INTO settings_current (variable, type, category, selected_value, title, comment, scope, subkeytext, access_url_changeable) VALUES ('icons_mode_svg', NULL, 'radio', 'Tuning', 'false', 'IconsModeSVGTitle', 'IconsModeSVGComment', '', NULL, 1);
+INSERT INTO settings_options (variable, value, display_text) VALUES ('icons_mode_svg', 'true', 'Yes');
+INSERT INTO settings_options (variable, value, display_text) VALUES ('icons_mode_svg', 'false', 'No');
