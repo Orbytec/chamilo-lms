@@ -25,7 +25,7 @@ class SerializerErrorTest extends WebTestCase
     {
         $this->iniSet('error_log', file_exists('/dev/null') ? '/dev/null' : 'nul');
 
-        $client = $this->createClient(array('test_case' => $testCase));
+        $client = $this->createClient(array('test_case' => $testCase, 'debug' => false));
         $client->request('GET', '/serializer-error/exception.json');
 
         $this->assertEquals($expectedContent, $client->getResponse()->getContent());
@@ -39,6 +39,26 @@ class SerializerErrorTest extends WebTestCase
         );
     }
 
+    public function testSerializeExceptionJsonWithDebug()
+    {
+        $this->iniSet('error_log', file_exists('/dev/null') ? '/dev/null' : 'nul');
+
+        $client = $this->createClient(array('test_case' => 'Debug', 'debug' => false));
+        $client->request('GET', '/serializer-error/unknown_exception.json');
+
+        $this->assertEquals('{"code":500,"message":"Unknown exception message."}', $client->getResponse()->getContent());
+    }
+
+    public function testSerializeExceptionJsonWithoutDebug()
+    {
+        $this->iniSet('error_log', file_exists('/dev/null') ? '/dev/null' : 'nul');
+
+        $client = $this->createClient(array('test_case' => 'Serializer', 'debug' => false));
+        $client->request('GET', '/serializer-error/unknown_exception.json');
+
+        $this->assertEquals('{"code":500,"message":"Internal Server Error","errors":null}', $client->getResponse()->getContent());
+    }
+
     /**
      * @dataProvider serializeExceptionXmlProvider
      */
@@ -46,7 +66,7 @@ class SerializerErrorTest extends WebTestCase
     {
         $this->iniSet('error_log', file_exists('/dev/null') ? '/dev/null' : 'nul');
 
-        $client = $this->createClient(array('test_case' => $testCase));
+        $client = $this->createClient(array('test_case' => $testCase, 'debug' => false));
         $client->request('GET', '/serializer-error/exception.xml');
 
         $this->assertEquals($expectedContent, $client->getResponse()->getContent());
@@ -54,13 +74,13 @@ class SerializerErrorTest extends WebTestCase
 
     public function serializeExceptionXmlProvider()
     {
-        $expectedSerializerContent = <<<XML
+        $expectedSerializerContent = <<<'XML'
 <?xml version="1.0"?>
 <response><code>500</code><message>Something bad happened.</message><errors/></response>
 
 XML;
 
-        $expectedJMSContent = <<<XML
+        $expectedJMSContent = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <result xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <code>500</code>
@@ -81,7 +101,7 @@ XML;
      */
     public function testSerializeInvalidFormJson($testCase, $expectedContent)
     {
-        $client = $this->createClient(array('test_case' => $testCase));
+        $client = $this->createClient(array('test_case' => $testCase, 'debug' => false));
         $client->request('GET', '/serializer-error/invalid-form.json');
 
         $this->assertEquals($expectedContent, $client->getResponse()->getContent());
@@ -100,7 +120,7 @@ XML;
      */
     public function testSerializeInvalidFormXml($testCase, $expectedContent)
     {
-        $client = $this->createClient(array('test_case' => $testCase));
+        $client = $this->createClient(array('test_case' => $testCase, 'debug' => false));
         $client->request('GET', '/serializer-error/invalid-form.xml');
 
         $this->assertEquals($expectedContent, $client->getResponse()->getContent());
@@ -108,13 +128,13 @@ XML;
 
     public function serializeInvalidFormXmlProvider()
     {
-        $expectedSerializerContent = <<<XML
+        $expectedSerializerContent = <<<'XML'
 <?xml version="1.0"?>
 <response><code>400</code><message>Validation Failed</message><errors><children><name><errors>This value should not be blank.</errors></name></children></errors></response>
 
 XML;
 
-        $expectedJMSContent = <<<XML
+        $expectedJMSContent = <<<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <result>
   <code>400</code>

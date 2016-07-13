@@ -23,9 +23,26 @@ use FOS\RestBundle\Util\Codes;
  * sections are normalized, and merged.
  *
  * @author Lukas Kahwe Smith <smith@pooteeweet.org>
+ *
+ * @internal
  */
 class Configuration implements ConfigurationInterface
 {
+    /**
+     * Default debug mode value.
+     *
+     * @var bool
+     */
+    private $debug;
+
+    /**
+     * @param bool $debug
+     */
+    public function __construct($debug)
+    {
+        $this->debug = (bool) $debug;
+    }
+
     /**
      * Generates the configuration tree.
      *
@@ -106,10 +123,6 @@ return $v; })
                     ->end()
                 ->end()
                 ->arrayNode('serializer')
-                    ->validate()
-                        ->ifTrue(function ($v) { return !empty($v['version']) && !empty($v['groups']); })
-                        ->thenInvalid('Only either a version or a groups exclusion strategy can be set')
-                    ->end()
                     ->addDefaultsIfNotSet()
                     ->children()
                         ->scalarNode('version')->defaultNull()->end()
@@ -119,6 +132,27 @@ return $v; })
                         ->booleanNode('serialize_null')->defaultFalse()->end()
                     ->end()
                 ->end()
+                ->arrayNode('zone')
+                    ->cannotBeOverwritten()
+                    ->prototype('array')
+                    ->fixXmlConfig('ip')
+                    ->children()
+                        ->scalarNode('path')
+                            ->defaultNull()
+                            ->info('use the urldecoded format')
+                            ->example('^/path to resource/')
+                        ->end()
+                        ->scalarNode('host')->defaultNull()->end()
+                        ->arrayNode('methods')
+                            ->beforeNormalization()->ifString()->then(function ($v) { return preg_split('/\s*,\s*/', $v); })->end()
+                            ->prototype('scalar')->end()
+                        ->end()
+                        ->arrayNode('ips')
+                            ->beforeNormalization()->ifString()->then(function ($v) { return array($v); })->end()
+                            ->prototype('scalar')->end()
+                        ->end()
+                    ->end()
+                ->end()
             ->end()
         ->end();
 
@@ -126,6 +160,7 @@ return $v; })
         $this->addExceptionSection($rootNode);
         $this->addBodyListenerSection($rootNode);
         $this->addFormatListenerSection($rootNode);
+        $this->addVersioningSection($rootNode);
 
         return $treeBuilder;
     }
@@ -296,11 +331,59 @@ return $v; })
                             ->children()
                                 ->scalarNode('service')->defaultNull()->end()
                                 ->scalarNode('version_regex')->defaultValue('/(v|version)=(?P<version>[0-9\.]+)/')->end()
-                            ->end()
-                        ->end()
                     ->end()
                 ->end()
             ->end();
+    }
+
+    private function addVersioningSection(ArrayNodeDefinition $rootNode)
+    {
+        $rootNode
+        ->children()
+            ->arrayNode('versioning')
+                ->canBeEnabled()
+                ->children()
+                    ->scalarNode('default_version')->defaultNull()->end()
+                    ->arrayNode('resolvers')
+                        ->addDefaultsIfNotSet()
+                        ->children()
+                            ->arrayNode('query')
+                                ->canBeDisabled()
+                                ->children()
+                                    ->scalarNode('parameter_name')->defaultValue('version')->end()
+                                ->end()
+                            ->end()
+                            ->arrayNode('custom_header')
+                                ->canBeDisabled()
+                                ->children()
+                                    ->scalarNode('header_name')->defaultValue('X-Accept-Version')->end()
+                                ->end()
+                            ->end()
+                            ->arrayNode('media_type')
+                                ->canBeDisabled()
+                                ->children()
+                                    ->scalarNode('regex')->defaultValue('/(v|version)=(?P<version>[0-9\.]+)/')->end()
+                                ->end()
+                            ->end()
+                        ->end()
+                    ->end()
+                    ->arrayNode('guessing_order')
+                        ->defaultValue(array('query', 'custom_header', 'media_type'))
+                        ->validate()
+                            ->ifTrue(function ($v) {
+                                foreach ($v as $resolver) {
+                                    if (!in_array($resolver, array('query', 'custom_header', 'media_type'))) {
+                                        return true;
+                                    }
+                                }
+                            })
+                            ->thenInvalid('Versioning guessing order can only contain "query", "custom_header", "media_type".')
+                        ->end()
+                        ->prototype('scalar')->end()
+                    ->end()
+                ->end()
+            ->end()
+        ->end();
     }
 
     private function addExceptionSection(ArrayNodeDefinition $rootNode)
@@ -325,6 +408,9 @@ return $v; })
                         ->arrayNode('messages')
                             ->useAttributeAsKey('name')
                             ->prototype('boolean')->end()
+                        ->end()
+                        ->booleanNode('debug')
+                            ->defaultValue($this->debug)
                         ->end()
                     ->end()
                 ->end()

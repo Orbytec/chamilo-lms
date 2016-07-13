@@ -15,6 +15,10 @@ use FOS\RestBundle\Controller\Annotations\Param;
 use Symfony\Component\Validator\ConstraintViolationInterface;
 use Symfony\Component\Validator\ConstraintViolationListInterface;
 
+/**
+ * @deprecated since version 1.8 and will be removed in 2.0. Catch specialized exception classes instead of relying on specific exception messages.
+ * @see FOS\RestBundle\Exception\InvalidParameterException
+ */
 interface ViolationFormatterInterface
 {
     /**

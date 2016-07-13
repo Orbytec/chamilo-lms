@@ -1,12 +1,9 @@
 # URLify for PHP
 
 A PHP port of [URLify.js](https://github.com/django/django/blob/master/django/contrib/admin/static/admin/js/urlify.js)
-from the Django project. Handles symbols from Latin languages, Czech, Greek, Latvian, 
-Lithuanian, Polish, Romanian, Russian, Turkish and Ukrainian. Symbols it cannot 
+from the Django project. Handles symbols from Latin languages as well as Arabic, Azerbaijani, Czech, German, Greek,
+Latvian, Lithuanian, Polish, Romanian, Bulgarian, Russian, Serbian, Turkish, Ukrainian and Vietnamese. Symbols it cannot
 transliterate it will simply omit.
-
-* Author: [jbroadway](http://github.com/jbroadway)
-* License: MIT
 
 ## Usage:
 
@@ -62,7 +59,7 @@ To extend the character list:
 
 URLify::add_chars (array (
 	'¿' => '?', '®' => '(r)', '¼' => '1/4',
-	'¼' => '1/2', '¾' => '3/4', '¶' => 'P'
+	'½' => '1/2', '¾' => '3/4', '¶' => 'P'
 ));
 
 echo URLify::downcode ('¿ ® ¼ ¼ ¾ ¶');

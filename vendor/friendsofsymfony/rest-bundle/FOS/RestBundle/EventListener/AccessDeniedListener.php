@@ -11,6 +11,7 @@
 
 namespace FOS\RestBundle\EventListener;
 
+use FOS\RestBundle\FOSRestBundle;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpKernel\Event\GetResponseForExceptionEvent;
 use Symfony\Component\HttpKernel\Exception\UnauthorizedHttpException;
@@ -26,6 +27,8 @@ use Symfony\Component\Security\Core\Exception\AuthenticationException;
  * will return a 403 regardless of how the firewall is configured.
  *
  * @author Lukas Kahwe Smith <smith@pooteeweet.org>
+ *
+ * @internal
  */
 class AccessDeniedListener extends ExceptionListener
 {
@@ -57,6 +60,10 @@ class AccessDeniedListener extends ExceptionListener
         }
 
         $request = $event->getRequest();
+
+        if (!$request->attributes->get(FOSRestBundle::ZONE_ATTRIBUTE, true)) {
+            return false;
+        }
 
         if (empty($this->formats[$request->getRequestFormat()]) && empty($this->formats[$request->getContentType()])) {
             return false;

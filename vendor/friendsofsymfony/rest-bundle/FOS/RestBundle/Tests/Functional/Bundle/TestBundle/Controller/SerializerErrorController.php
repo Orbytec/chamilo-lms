@@ -25,9 +25,17 @@ class SerializerErrorController extends Controller
     /**
      * @View
      */
-    public function exceptionAction()
+    public function logicExceptionAction()
     {
-        throw new \Exception('Something bad happened.');
+        throw new \LogicException('Something bad happened.');
+    }
+
+    /**
+     * @View
+     */
+    public function unknownExceptionAction()
+    {
+        throw new \OutOfBoundsException('Unknown exception message.');
     }
 
     /**

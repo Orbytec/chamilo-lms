@@ -157,6 +157,13 @@ class MediaVorus
             case $mime === 'application/powerpoint':
             case $mime === 'application/vnd.ms-powerpoint':
             case $mime === 'application/vnd.ms-excel':
+            case $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            case $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.template':
+            case $mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            case $mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.template':
+            case $mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+            case $mime === 'application/vnd.openxmlformats-officedocument.presentationml.template':
+            case $mime === 'application/vnd.openxmlformats-officedocument.presentationml.slideshow':
             case $mime === 'application/vnd.oasis.opendocument.formula':
             case $mime === 'application/vnd.oasis.opendocument.text-master':
             case $mime === 'application/vnd.oasis.opendocument.database':

@@ -53,6 +53,7 @@ class FOSRestExtensionTest extends \PHPUnit_Framework_TestCase
     {
         $this->container = new ContainerBuilder();
         $this->container->setParameter('kernel.bundles', array('JMSSerializerBundle' => true));
+        $this->container->setParameter('kernel.debug', false);
         $this->extension = new FOSRestExtension();
         $this->includeFormat = true;
         $this->formats = array(
@@ -216,7 +217,7 @@ class FOSRestExtensionTest extends \PHPUnit_Framework_TestCase
         $this->assertTrue($this->container->hasDefinition('fos_rest.format_listener'));
     }
 
-    public function testLoadFormatListenerMediaType()
+    public function testLegacyFormatListenerMediaType()
     {
         $config = array(
             'fos_rest' => array('format_listener' => array(
@@ -332,6 +333,13 @@ class FOSRestExtensionTest extends \PHPUnit_Framework_TestCase
         $config = array('fos_rest' => array('body_converter' => array('validate' => false)));
         $this->extension->load($config, $this->container);
         $this->assertFalse($this->container->has('fos_rest.validator'));
+    }
+
+    public function testDefaultSerializerGroupsIsArray()
+    {
+        $config = array();
+        $this->extension->load($config, $this->container);
+        $this->assertTrue(is_array($this->container->getParameter('fos_rest.serializer.exclusion_strategy.groups')));
     }
 
     /**
@@ -573,6 +581,73 @@ class FOSRestExtensionTest extends \PHPUnit_Framework_TestCase
     }
 
     /**
+     * Test exception.debug config value uses kernel.debug value by default or provided value.
+     *
+     * @dataProvider getShowExceptionData
+     *
+     * @param bool        $kernelDebug     kernel.debug param value
+     * @param array       $exceptionConfig Exception config
+     * @param bool|string $expectedValue   Expected value of show_exception argument
+     */
+    public function testExceptionDebug($kernelDebug, $exceptionConfig, $expectedValue)
+    {
+        $this->container->setParameter('kernel.debug', $kernelDebug);
+        $extension = new FOSRestExtension();
+
+        $extension->load(array(
+            'fos_rest' => array(
+                'exception' => $exceptionConfig,
+            ),
+        ), $this->container);
+
+        $definition = $this->container->getDefinition('fos_rest.controller.exception');
+        $this->assertSame($expectedValue, $this->container->getParameter('fos_rest.exception.debug'));
+    }
+
+    public static function getShowExceptionData()
+    {
+        return array(
+            'empty config, kernel.debug is true' => array(
+                true,
+                array(),
+                true,
+            ),
+            'empty config, kernel.debug is false' => array(
+                false,
+                array(),
+                false,
+            ),
+            'config debug true' => array(
+                false,
+                array('debug' => true),
+                true,
+            ),
+            'config debug false' => array(
+                true,
+                array('debug' => false),
+                false,
+            ),
+            'config debug null, kernel.debug true' => array(
+                false,
+                array('debug' => null),
+                true,
+            ),
+            'config debug null, kernel.debug false' => array(
+                false,
+                array('debug' => null),
+                true,
+            ),
+        );
+    }
+
+    public function testGetConfiguration()
+    {
+        $configuration = $this->extension->getConfiguration(array(), $this->container);
+
+        $this->assertInstanceOf('FOS\RestBundle\DependencyInjection\Configuration', $configuration);
+    }
+
+    /**
      * Assert that loader definition described properly.
      *
      * @param Definition $loader               loader definition
@@ -683,5 +758,45 @@ class FOSRestExtensionTest extends \PHPUnit_Framework_TestCase
     public function testExceptionThrownIfCallbackFilterIsUsed()
     {
         $this->extension->load(array('fos_rest' => array('view' => array('jsonp_handler' => array('callback_filter' => 'foo')))), $this->container);
+    }
+
+    public function testZoneMatcherListenerDefault()
+    {
+        $this->extension->load(array('fos_rest' => array()), $this->container);
+
+        $this->assertFalse($this->container->has('fos_rest.zone_matcher_listener'));
+    }
+
+    public function testZoneMatcherListener()
+    {
+        $config = array('fos_rest' => array(
+            'zone' => array(
+                'first' => array('path' => '/api/*'),
+                'second' => array('path' => '/^second', 'ips' => '127.0.0.1'),
+            ),
+        ));
+
+        $this->extension->load($config, $this->container);
+        $zoneMatcherListener = $this->container->getDefinition('fos_rest.zone_matcher_listener');
+        $addRequestMatcherCalls = $zoneMatcherListener->getMethodCalls();
+
+        $this->assertTrue($this->container->has('fos_rest.zone_matcher_listener'));
+        $this->assertEquals('FOS\RestBundle\EventListener\ZoneMatcherListener', $zoneMatcherListener->getClass());
+        $this->assertCount(2, $addRequestMatcherCalls);
+
+        // First zone
+        $this->assertEquals('addRequestMatcher', $addRequestMatcherCalls[0][0]);
+        $requestMatcherFirstId = (string) $addRequestMatcherCalls[0][1][0];
+        $requestMatcherFirst = $this->container->getDefinition($requestMatcherFirstId);
+        $this->assertInstanceOf('Symfony\Component\DependencyInjection\DefinitionDecorator', $requestMatcherFirst->getClass());
+        $this->assertEquals('/api/*', $requestMatcherFirst->getArgument(0));
+
+        // Second zone
+        $this->assertEquals('addRequestMatcher', $addRequestMatcherCalls[1][0]);
+        $requestMatcherSecondId = (string) $addRequestMatcherCalls[1][1][0];
+        $requestMatcherSecond = $this->container->getDefinition($requestMatcherSecondId);
+        $this->assertInstanceOf('Symfony\Component\DependencyInjection\DefinitionDecorator', $requestMatcherSecond->getClass());
+        $this->assertEquals('/^second', $requestMatcherSecond->getArgument(0));
+        $this->assertEquals(array('127.0.0.1'), $requestMatcherSecond->getArgument(3));
     }
 }

@@ -15,7 +15,7 @@ use Symfony\Component\DependencyInjection\ContainerAwareInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
- * Provides encoders through the Symfony2 DIC.
+ * Provides encoders through the Symfony DIC.
  *
  * @author Igor Wiedler <igor@wiedler.ch>
  */
@@ -25,6 +25,8 @@ class ContainerDecoderProvider implements DecoderProviderInterface, ContainerAwa
 
     /**
      * @var ContainerInterface
+     *
+     * @internal
      */
     protected $container;
 

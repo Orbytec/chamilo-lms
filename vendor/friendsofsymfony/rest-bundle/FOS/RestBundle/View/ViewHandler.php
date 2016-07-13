@@ -11,19 +11,23 @@
 
 namespace FOS\RestBundle\View;
 
-use JMS\Serializer\SerializerInterface;
+use FOS\RestBundle\Context\Context;
+use FOS\RestBundle\Context\Adapter\JMSContextAdapter;
+use FOS\RestBundle\Util\Codes;
+use FOS\RestBundle\Util\ContextHelper;
+use FOS\RestBundle\Serializer\Serializer;
+use JMS\Serializer\SerializerInterface as JMSSerializerInterface;
 use JMS\Serializer\SerializationContext;
+use Symfony\Bundle\FrameworkBundle\Templating\TemplateReference;
 use Symfony\Component\DependencyInjection\ContainerAwareInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\Form\FormInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\UnsupportedMediaTypeHttpException;
-use Symfony\Component\Form\FormInterface;
-use Symfony\Bundle\FrameworkBundle\Templating\TemplateReference;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
-use FOS\RestBundle\Util\Codes;
 
 /**
  * View may be used in controllers to build up a response in a format agnostic way
@@ -147,7 +151,7 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
      */
     public function setExclusionStrategyGroups($groups)
     {
-        $this->exclusionStrategyGroups = $groups;
+        $this->exclusionStrategyGroups = (array) $groups;
     }
 
     /**
@@ -241,6 +245,8 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
     /**
      * Gets the router service.
      *
+     * @deprecated since 1.8, to be removed in 2.0.
+     *
      * @return RouterInterface
      */
     protected function getRouter()
@@ -254,10 +260,17 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
      * @param View $view view instance from which the serializer should be configured
      *
      * @return object that must provide a "serialize()" method
+     *
+     * @deprecated since 1.8, to be removed in 2.0.
      */
     protected function getSerializer(View $view = null)
     {
-        return $this->container->get('fos_rest.serializer');
+        $serializer = $this->container->get('fos_rest.serializer');
+        if (!($serializer instanceof Serializer)) {
+            @trigger_error('Support of custom serializer as fos_rest.serializer is deprecated since version 1.8. You should now use FOS\RestBundle\Serializer\Serializer.', E_USER_DEPRECATED);
+        }
+
+        return $serializer;
     }
 
     /**
@@ -270,18 +283,30 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
      */
     protected function getSerializationContext(View $view)
     {
-        $context = $view->getSerializationContext();
-
-        if ($context->attributes->get('groups')->isEmpty() && $this->exclusionStrategyGroups) {
-            $context->setGroups($this->exclusionStrategyGroups);
+        // BC < 1.8
+        $viewClass = 'FOS\RestBundle\View\View';
+        if (get_class($view) === $viewClass) {
+            $context = $view->getContext();
+        } else {
+            $method = new \ReflectionMethod($view, 'getSerializationContext');
+            if ($method->getDeclaringClass()->getName() != $viewClass) {
+                $context = $view->getSerializationContext();
+            } else {
+                $context = $view->getContext();
+            }
         }
 
-        if ($context->attributes->get('version')->isEmpty() && $this->exclusionStrategyVersion) {
-            $context->setVersion($this->exclusionStrategyVersion);
+        $groups = ContextHelper::getGroups($context);
+        if (empty($groups) && $this->exclusionStrategyGroups) {
+            ContextHelper::addGroups($context, $this->exclusionStrategyGroups);
         }
 
-        if (null === $context->shouldSerializeNull() && null !== $this->serializeNullStrategy) {
-            $context->setSerializeNull($this->serializeNullStrategy);
+        if (null === ContextHelper::getVersion($context) && $this->exclusionStrategyVersion) {
+            ContextHelper::setVersion($context, $this->exclusionStrategyVersion);
+        }
+
+        if (null === ContextHelper::getSerializeNull($context) && null !== $this->serializeNullStrategy) {
+            ContextHelper::setSerializeNull($context, $this->serializeNullStrategy);
         }
 
         return $context;
@@ -291,6 +316,8 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
      * Gets the templating service.
      *
      * @return \Symfony\Bundle\FrameworkBundle\Templating\EngineInterface
+     *
+     * @deprecated since 1.8, to be removed in 2.0.
      */
     protected function getTemplating()
     {
@@ -343,7 +370,7 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
     public function createRedirectResponse(View $view, $location, $format)
     {
         $content = null;
-        if (($view->getStatusCode() == Codes::HTTP_CREATED || $view->getStatusCode() == Codes::HTTP_ACCEPTED) && $view->getData() != null) {
+        if (($view->getStatusCode() === Codes::HTTP_CREATED || $view->getStatusCode() === Codes::HTTP_ACCEPTED) && $view->getData() !== null) {
             $response = $this->initResponse($view, $format);
         } else {
             $response = $view->getResponse();
@@ -386,6 +413,8 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
                 $template->set('engine', $engine);
             }
         }
+
+        $this->deprecateGetter('getTemplating');
 
         return $this->getTemplating()->render($template, $data);
     }
@@ -431,6 +460,8 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
     public function createResponse(View $view, Request $request, $format)
     {
         $route = $view->getRoute();
+
+        $this->deprecateGetter('getRouter');
         $location = $route
             ? $this->getRouter()->generate($route, (array) $view->getRouteParameters(), UrlGeneratorInterface::ABSOLUTE_URL)
             : $view->getLocation();
@@ -463,9 +494,14 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
             $content = $this->renderTemplate($view, $format);
         } elseif ($this->serializeNull || null !== $view->getData()) {
             $data = $this->getDataFromView($view);
+
+            $this->deprecateGetter('getSerializer');
             $serializer = $this->getSerializer($view);
-            if ($serializer instanceof SerializerInterface) {
+            if ($serializer instanceof JMSSerializerInterface || $serializer instanceof Serializer) {
                 $context = $this->getSerializationContext($view);
+                if ($serializer instanceof JMSSerializerInterface && $context instanceof Context) {
+                    $context = JMSContextAdapter::convertSerializationContext($context);
+                }
                 $content = $serializer->serialize($data, $format, $context);
             } else {
                 $content = $serializer->serialize($data, $format);
@@ -533,5 +569,20 @@ class ViewHandler implements ConfigurableViewHandlerInterface, ContainerAwareInt
                  'errors' => $form,
             )
         );
+    }
+
+    /**
+     * Triggers a deprecation if a getter is extended.
+     *
+     * @todo remove this in 2.0.
+     */
+    private function deprecateGetter($name)
+    {
+        if (is_subclass_of($this, __CLASS__)) {
+            $method = new \ReflectionMethod($this, $name);
+            if ($method->getDeclaringClass()->getName() !== __CLASS__) {
+                @trigger_error(sprintf('Overwriting %s::%s() is deprecated since version 1.8 and will be removed in 2.0. You should update your class %s.', __CLASS__, $name, get_class($this)), E_USER_DEPRECATED);
+            }
+        }
     }
 }

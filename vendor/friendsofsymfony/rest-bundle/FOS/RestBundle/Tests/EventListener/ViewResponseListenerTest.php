@@ -13,6 +13,7 @@ namespace FOS\RestBundle\Tests\EventListener;
 
 use FOS\RestBundle\Controller\Annotations\View as ViewAnnotation;
 use FOS\RestBundle\EventListener\ViewResponseListener;
+use FOS\RestBundle\FOSRestBundle;
 use FOS\RestBundle\View\View;
 use FOS\RestBundle\View\ViewHandler;
 use Symfony\Component\HttpFoundation\Request;
@@ -96,6 +97,18 @@ class ViewResponseListenerTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('foo', $request->attributes->get('_template'));
     }
 
+    public function testOnKernelControllerNoZone()
+    {
+        $request = new Request();
+        $request->attributes->set(FOSRestBundle::ZONE_ATTRIBUTE, false);
+        $request->attributes->set('_view', 'foo');
+        $event = $this->getFilterEvent($request);
+
+        $this->listener->onKernelController($event);
+
+        $this->assertNull($request->attributes->get('_template'));
+    }
+
     public function testOnKernelControllerNoView()
     {
         $request = new Request();
@@ -108,7 +121,7 @@ class ViewResponseListenerTest extends \PHPUnit_Framework_TestCase
 
     public function testOnKernelView()
     {
-        $template = $this->getMockBuilder('Symfony\Bundle\FrameworkBundle\Templating\TemplateReference')
+        $template = $this->getMockBuilder('Symfony\Component\Templating\TemplateReferenceInterface')
             ->disableOriginalConstructor()
             ->getMock();
         $template->expects($this->once())
@@ -264,15 +277,15 @@ class ViewResponseListenerTest extends \PHPUnit_Framework_TestCase
     public static function serializerEnableMaxDepthChecksProvider()
     {
         return array(
-            array(false, get_class(null)),
-            array(true, 'JMS\Serializer\Exclusion\DepthExclusionStrategy'),
+            array(false, null),
+            array(true, 0),
         );
     }
 
     /**
      * @dataProvider serializerEnableMaxDepthChecksProvider
      */
-    public function testSerializerEnableMaxDepthChecks($enableMaxDepthChecks, $expectedClass)
+    public function testSerializerEnableMaxDepthChecks($enableMaxDepthChecks, $expectedMaxDepth)
     {
         $viewAnnotation = new ViewAnnotation(array());
         $viewAnnotation->setSerializerEnableMaxDepthChecks($enableMaxDepthChecks);
@@ -305,10 +318,10 @@ class ViewResponseListenerTest extends \PHPUnit_Framework_TestCase
 
         $this->listener->onKernelView($event);
 
-        $context = $view->getSerializationContext();
-        $exclusionStrategy = $context->getExclusionStrategy();
+        $context = $view->getContext();
+        $maxDepth = $context->getMaxDepth();
 
-        $this->assertEquals($expectedClass, get_class($exclusionStrategy));
+        $this->assertEquals($expectedMaxDepth, $maxDepth);
     }
 
     public function getDataForDefaultVarsCopy()

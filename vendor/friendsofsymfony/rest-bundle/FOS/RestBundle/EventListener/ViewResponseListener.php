@@ -11,19 +11,23 @@
 
 namespace FOS\RestBundle\EventListener;
 
+use FOS\RestBundle\Context\Context;
+use FOS\RestBundle\FOSRestBundle;
+use FOS\RestBundle\Util\Codes;
+use FOS\RestBundle\Util\ContextHelper;
+use FOS\RestBundle\View\View;
+use FOS\RestBundle\View\ViewHandlerInterface;
+use Sensio\Bundle\FrameworkExtraBundle\EventListener\TemplateListener;
 use Symfony\Component\HttpKernel\Event\FilterControllerEvent;
 use Symfony\Component\HttpKernel\Event\GetResponseForControllerResultEvent;
-use Symfony\Bundle\FrameworkBundle\Templating\TemplateReference;
-use Sensio\Bundle\FrameworkExtraBundle\EventListener\TemplateListener;
-use JMS\Serializer\SerializationContext;
-use FOS\RestBundle\View\View;
-use FOS\RestBundle\Util\Codes;
-use FOS\RestBundle\View\ViewHandlerInterface;
+use Symfony\Component\Templating\TemplateReferenceInterface;
 
 /**
  * The ViewResponseListener class handles the View core event as well as the "@extra:Template" annotation.
  *
  * @author Lukas Kahwe Smith <smith@pooteeweet.org>
+ *
+ * @internal
  */
 class ViewResponseListener extends TemplateListener
 {
@@ -36,6 +40,10 @@ class ViewResponseListener extends TemplateListener
     public function onKernelController(FilterControllerEvent $event)
     {
         $request = $event->getRequest();
+
+        if (!$request->attributes->get(FOSRestBundle::ZONE_ATTRIBUTE, true)) {
+            return;
+        }
 
         if ($configuration = $request->attributes->get('_view')) {
             $request->attributes->set('_template', $configuration);
@@ -53,6 +61,11 @@ class ViewResponseListener extends TemplateListener
     public function onKernelView(GetResponseForControllerResultEvent $event)
     {
         $request = $event->getRequest();
+
+        if (!$request->attributes->get(FOSRestBundle::ZONE_ATTRIBUTE, true)) {
+            return false;
+        }
+
         /** @var \FOS\RestBundle\Controller\Annotations\View $configuration */
         $configuration = $request->attributes->get('_view');
 
@@ -74,16 +87,28 @@ class ViewResponseListener extends TemplateListener
             if ($configuration->getStatusCode() && (null === $view->getStatusCode() || Codes::HTTP_OK === $view->getStatusCode())) {
                 $view->setStatusCode($configuration->getStatusCode());
             }
+
+            // BC < 1.8
+            $viewClass = 'FOS\RestBundle\View\View';
+            if (get_class($view) === $viewClass) {
+                $context = $view->getContext();
+            } else {
+                $method = new \ReflectionMethod($view, 'getSerializationContext');
+                if ($method->getDeclaringClass()->getName() != $viewClass) {
+                    $context = $view->getSerializationContext();
+                } else {
+                    $context = $view->getContext();
+                }
+            }
+            $context = $context ?: new Context();
+
             if ($configuration->getSerializerGroups() && !$customViewDefined) {
-                $context = $view->getSerializationContext() ?: new SerializationContext();
-                $context->setGroups($configuration->getSerializerGroups());
-                $view->setSerializationContext($context);
+                ContextHelper::addGroups($context, $configuration->getSerializerGroups());
             }
             if ($configuration->getSerializerEnableMaxDepthChecks()) {
-                $context = $view->getSerializationContext() ?: new SerializationContext();
-                $context->enableMaxDepthChecks();
-                $view->setSerializationContext($context);
+                ContextHelper::setMaxDepth($context, 0);
             }
+
             $populateDefaultVars = $configuration->isPopulateDefaultVars();
         } else {
             $populateDefaultVars = true;
@@ -101,7 +126,10 @@ class ViewResponseListener extends TemplateListener
         /** @var ViewHandlerInterface $viewHandler */
         $viewHandler = $this->container->get('fos_rest.view_handler');
 
-        if ($viewHandler->isFormatTemplating($view->getFormat())) {
+        if ($viewHandler->isFormatTemplating($view->getFormat())
+            && !$view->getRoute()
+            && !$view->getLocation()
+        ) {
             if (!empty($vars)) {
                 $parameters = (array) $viewHandler->prepareTemplateParameters($view);
 
@@ -115,7 +143,7 @@ class ViewResponseListener extends TemplateListener
 
             $template = $request->attributes->get('_template');
             if ($template && !$view->getTemplate()) {
-                if ($template instanceof TemplateReference) {
+                if ($template instanceof TemplateReferenceInterface) {
                     $template->set('format', null);
                 }
 

@@ -15,6 +15,8 @@ namespace FOS\RestBundle\Util\Inflector;
  * Inflector interface.
  *
  * @author Mark Kazemier <Markkaz>
+ *
+ * @deprecated since 1.8, to be removed in 2.0. Use {@link \FOS\RestBundle\Inflector\InflectorInterface} instead.
  */
 interface InflectorInterface
 {

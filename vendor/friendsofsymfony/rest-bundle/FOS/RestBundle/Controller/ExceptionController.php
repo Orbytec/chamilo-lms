@@ -21,6 +21,7 @@ use Symfony\Component\Debug\Exception\FlattenException as DebugFlattenException;
 use Symfony\Component\HttpKernel\Log\DebugLoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Templating\TemplateReferenceInterface;
 use FOS\RestBundle\Util\Codes;
 use FOS\RestBundle\View\ViewHandler;
 use FOS\RestBundle\View\View;
@@ -31,8 +32,12 @@ use FOS\RestBundle\Util\ExceptionWrapper;
  */
 class ExceptionController implements ContainerAwareInterface
 {
+    private $debug;
+
     /**
      * @var ContainerInterface
+     *
+     * @internal
      */
     protected $container;
 
@@ -106,8 +111,13 @@ class ExceptionController implements ContainerAwareInterface
         $currentContent = $this->getAndCleanOutputBuffering($request);
         $code = $this->getStatusCode($exception);
         $viewHandler = $this->container->get('fos_rest.view_handler');
+
+        $this->debug = $showException = $request->attributes->get('showException',
+            $this->container->hasParameter('fos_rest.exception.debug')
+            ? $this->container->getParameter('fos_rest.exception.debug')
+            : $this->container->get('kernel')->isDebug()
+        );
         $parameters = $this->getParameters($viewHandler, $currentContent, $code, $exception, $logger, $format);
-        $showException = $request->attributes->get('showException', $this->container->get('kernel')->isDebug());
 
         try {
             if (!$viewHandler->isFormatTemplating($format)) {
@@ -122,7 +132,11 @@ class ExceptionController implements ContainerAwareInterface
             }
 
             $response = $viewHandler->handle($view);
-        } catch (\Exception $e) {
+        } catch (\Exception $handleException) {
+        } catch (\Throwable $handleException) {
+        }
+
+        if (isset($handleException)) {
             $message = 'An Exception was thrown while handling: ';
             $message .= $this->getExceptionMessage($exception);
             $response = $this->createPlainResponse($message, Codes::HTTP_INTERNAL_SERVER_ERROR, $exception->getHeaders());
@@ -156,6 +170,8 @@ class ExceptionController implements ContainerAwareInterface
      * @param Request $request
      *
      * @return string
+     *
+     * @internal
      */
     protected function getAndCleanOutputBuffering(Request $request)
     {
@@ -181,22 +197,18 @@ class ExceptionController implements ContainerAwareInterface
      * @param array                                      $exceptionMap
      *
      * @return int|false
+     *
+     * @internal
      */
     protected function isSubclassOf($exception, $exceptionMap)
     {
         $exceptionClass = $exception->getClass();
-        $reflectionExceptionClass = new \ReflectionClass($exceptionClass);
-        try {
-            foreach ($exceptionMap as $exceptionMapClass => $value) {
-                if ($value
-                    && ($exceptionClass === $exceptionMapClass || $reflectionExceptionClass->isSubclassOf($exceptionMapClass))
-                ) {
-                    return $value;
-                }
+        foreach ($exceptionMap as $exceptionMapClass => $value) {
+            if ($value
+                && ($exceptionClass === $exceptionMapClass || is_subclass_of($exceptionClass, $exceptionMapClass))
+            ) {
+                return $value;
             }
-        } catch (\ReflectionException $re) {
-            return 'FOSUserBundle: Invalid class in  fos_res.exception.messages: '
-                    .$re->getMessage();
         }
 
         return false;
@@ -214,7 +226,7 @@ class ExceptionController implements ContainerAwareInterface
         $exceptionMap = $this->container->getParameter('fos_rest.exception.messages');
         $showExceptionMessage = $this->isSubclassOf($exception, $exceptionMap);
 
-        if ($showExceptionMessage || $this->container->get('kernel')->isDebug()) {
+        if ($showExceptionMessage || $this->debug) {
             return $exception->getMessage();
         }
 
@@ -306,12 +318,14 @@ class ExceptionController implements ContainerAwareInterface
      * @param int     $statusCode
      * @param bool    $showException
      *
-     * @return TemplateReference
+     * @return TemplateReferenceInterface
+     *
+     * @internal
      */
     protected function findTemplate(Request $request, $format, $statusCode, $showException)
     {
         $name = $showException ? 'exception' : 'error';
-        if ($showException && 'html' == $format) {
+        if ($showException && 'html' === $format) {
             $name = 'exception_full';
         }
 

@@ -12,6 +12,7 @@
 namespace FOS\RestBundle\EventListener;
 
 use FOS\RestBundle\Decoder\DecoderProviderInterface;
+use FOS\RestBundle\FOSRestBundle;
 use FOS\RestBundle\Normalizer\ArrayNormalizerInterface;
 use FOS\RestBundle\Normalizer\Exception\NormalizationException;
 use Symfony\Component\HttpFoundation\ParameterBag;
@@ -24,6 +25,8 @@ use Symfony\Component\HttpKernel\Exception\UnsupportedMediaTypeHttpException;
  * This listener handles Request body decoding.
  *
  * @author Lukas Kahwe Smith <smith@pooteeweet.org>
+ *
+ * @internal
  */
 class BodyListener
 {
@@ -86,6 +89,11 @@ class BodyListener
     public function onKernelRequest(GetResponseEvent $event)
     {
         $request = $event->getRequest();
+
+        if (!$request->attributes->get(FOSRestBundle::ZONE_ATTRIBUTE, true)) {
+            return;
+        }
+
         $method = $request->getMethod();
         $contentType = $request->headers->get('Content-Type');
         $normalizeRequest = $this->normalizeForms && $this->isFormRequest($request);
@@ -170,6 +178,8 @@ class BodyListener
      * @param Request $request
      *
      * @return bool
+     *
+     * @internal
      */
     protected function isFormRequest(Request $request)
     {

@@ -32,11 +32,22 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
         $configs = $container->getExtensionConfig($this->getAlias());
         $parameterBag = $container->getParameterBag();
         $configs = $parameterBag->resolveValue($configs);
-        $config = $this->processConfiguration(new Configuration(), $configs);
+        $config = $this->processConfiguration(
+            new Configuration($container->getParameter('kernel.debug')),
+            $configs
+        );
 
         if ($config['view']['view_response_listener']['enabled']) {
             $container->prependExtensionConfig('sensio_framework_extra', array('view' => array('annotations' => false)));
         }
+    }
+
+    /*
+     * {@inheritdoc}
+     */
+    public function getConfiguration(array $config, ContainerBuilder $container)
+    {
+        return new Configuration($container->getParameter('kernel.debug'));
     }
 
     /**
@@ -50,13 +61,15 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
      */
     public function load(array $configs, ContainerBuilder $container)
     {
-        $config = $this->processConfiguration(new Configuration(), $configs);
+        $configuration = new Configuration($container->getParameter('kernel.debug'));
+        $config = $this->processConfiguration($configuration, $configs);
 
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
         $loader->load('view.xml');
         $loader->load('routing.xml');
         $loader->load('util.xml');
         $loader->load('request.xml');
+        $loader->load('serializer.xml');
 
         $container->setParameter('fos_rest.cache_dir', $config['cache_dir']);
         $container->setParameter('fos_rest.routing.loader.default_format', $config['routing_loader']['default_format']);
@@ -80,9 +93,11 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
 
         $this->loadBodyListener($config, $loader, $container);
         $this->loadFormatListener($config, $loader, $container);
+        $this->loadVersioning($config, $loader, $container);
         $this->loadParamFetcherListener($config, $loader, $container);
         $this->loadAllowedMethodsListener($config, $loader, $container);
         $this->loadAccessDeniedListener($config, $loader, $container);
+        $this->loadZoneMatcherListener($config, $loader, $container);
     }
 
     private function loadForm(array $config, XmlFileLoader $loader, ContainerBuilder $container)
@@ -100,7 +115,7 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
 
             if (!empty($config['access_denied_listener']['service'])) {
                 $service = $container->getDefinition('fos_rest.access_denied_listener');
-                $service->clearTag('kernel.event_listener');
+                $service->clearTag('kernel.event_subscriber');
             }
 
             $container->setParameter('fos_rest.access_denied_listener.formats', $config['access_denied_listener']['formats']);
@@ -108,6 +123,9 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
         }
     }
 
+    /**
+     * @internal
+     */
     public function loadAllowedMethodsListener(array $config, XmlFileLoader $loader, ContainerBuilder $container)
     {
         if ($config['allowed_methods_listener']['enabled']) {
@@ -164,19 +182,52 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
                 'fos_rest.format_listener.rules',
                 $config['format_listener']['rules']
             );
+        }
+    }
 
-            if (!empty($config['format_listener']['media_type']['enabled']) && !empty($config['format_listener']['media_type']['version_regex'])) {
+    private function loadVersioning(array $config, XmlFileLoader $loader, ContainerBuilder $container)
+    {
+        if ($config['versioning']['enabled'] || $config['format_listener']['media_type']['enabled']) {
+            $loader->load('versioning.xml');
+
+            $versionListener = $container->getDefinition('fos_rest.version_listener');
+            $versionListener->replaceArgument(2, $config['versioning']['default_version']);
+
+            // BC FOSRestBundle < 1.8, to be removed in 2.0
+            if ($config['format_listener']['media_type']['enabled'] && !empty($config['format_listener']['media_type']['version_regex'])) {
+                @trigger_error('The format_listener.media_type section of the FOSRestBundle configuration is deprecated since 1.8 and will be removed in 2.0. Use versioning instead.', E_USER_DEPRECATED);
+
                 $container->setParameter(
                     'fos_rest.format_listener.media_type.version_regex',
                     $config['format_listener']['media_type']['version_regex']
                 );
+                $versionListener->addMethodCall('setRegex', array($config['format_listener']['media_type']['version_regex']));
 
                 if (!empty($config['format_listener']['media_type']['service'])) {
                     $service = $container->getDefinition('fos_rest.version_listener');
                     $service->clearTag('kernel.event_listener');
                 }
-            } else {
-                $container->removeDefinition('fos_rest.version_listener');
+            }
+
+            $resolvers = array();
+            if ($config['versioning']['resolvers']['query']['enabled']) {
+                $resolvers['query'] = $container->getDefinition('fos_rest.versioning.query_parameter_resolver');
+                $resolvers['query']->replaceArgument(0, $config['versioning']['resolvers']['query']['parameter_name']);
+            }
+            if ($config['versioning']['resolvers']['custom_header']['enabled']) {
+                $resolvers['custom_header'] = $container->getDefinition('fos_rest.versioning.header_resolver');
+                $resolvers['custom_header']->replaceArgument(0, $config['versioning']['resolvers']['custom_header']['header_name']);
+            }
+            if ($config['versioning']['resolvers']['media_type']['enabled']) {
+                $resolvers['media_type'] = $container->getDefinition('fos_rest.versioning.media_type_resolver');
+                $resolvers['media_type']->replaceArgument(0, $config['versioning']['resolvers']['media_type']['regex']);
+            }
+
+            $chainResolver = $container->getDefinition('fos_rest.versioning.chain_resolver');
+            foreach ($config['versioning']['guessing_order'] as $resolver) {
+                if (isset($resolvers[$resolver])) {
+                    $chainResolver->addMethodCall('addResolver', array($resolvers[$resolver]));
+                }
             }
         }
     }
@@ -330,12 +381,14 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
 
             if (!empty($config['exception']['service'])) {
                 $service = $container->getDefinition('fos_rest.exception_listener');
-                $service->clearTag('kernel.event_listener');
+                $service->clearTag('kernel.event_subscriber');
             }
 
             if ($config['exception']['exception_controller']) {
                 $container->setParameter('fos_rest.exception_listener.controller', $config['exception']['exception_controller']);
             }
+
+            $container->setParameter('fos_rest.exception.debug', $config['exception']['debug']);
         }
 
         foreach ($config['exception']['codes'] as $exception => $code) {
@@ -365,6 +418,48 @@ class FOSRestExtension extends Extension implements PrependExtensionInterface
         }
 
         $container->setParameter('fos_rest.serializer.serialize_null', $config['serializer']['serialize_null']);
+    }
+
+    private function loadZoneMatcherListener(array $config, XmlFileLoader $loader, ContainerBuilder $container)
+    {
+        if (!empty($config['zone'])) {
+            $loader->load('zone_matcher_listener.xml');
+            $zoneMatcherListener = $container->getDefinition('fos_rest.zone_matcher_listener');
+
+            foreach ($config['zone'] as $zone) {
+                $matcher = $this->createZoneRequestMatcher($container,
+                    $zone['path'],
+                    $zone['host'],
+                    $zone['methods'],
+                    $zone['ips']
+                );
+
+                $zoneMatcherListener->addMethodCall('addRequestMatcher', array($matcher));
+            }
+        }
+    }
+
+    private function createZoneRequestMatcher(ContainerBuilder $container, $path = null, $host = null, $methods = array(), $ip = null)
+    {
+        if ($methods) {
+            $methods = array_map('strtoupper', (array) $methods);
+        }
+
+        $serialized = serialize(array($path, $host, $methods, $ip));
+        $id = 'fos_rest.zone_request_matcher.'.md5($serialized).sha1($serialized);
+
+        // only add arguments that are necessary
+        $arguments = array($path, $host, $methods, $ip);
+        while (count($arguments) > 0 && !end($arguments)) {
+            array_pop($arguments);
+        }
+
+        $container
+            ->register($id, new DefinitionDecorator('fos_rest.zone_request_matcher'))
+            ->setArguments($arguments)
+        ;
+
+        return new Reference($id);
     }
 
     /**
